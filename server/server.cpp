@@ -7,111 +7,99 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 
-#define threadpool_size 4
+#include <string.h>
 
-sem_t x, y;
-pthread_t tid;
-pthread_t readerthreads[100];
-pthread_t writerthreads[100];
-int readercount = 0;
 
-void *reader(void* param) {
-    sem_wait(&x);
-    readercount++;
 
-    if(readercount == 1) {
-        sem_wait(&y);
-    }
+// #define threadpool_size 4
 
-    sem_post(&x);
+// sem_t x, y;
+// pthread_t tid;
+// pthread_t readerthreads[100];
+// pthread_t writerthreads[100];
+// int readercount = 0;
 
-    std::cout << readercount << " is inside\n";
+// void *reader(void* param) {
+//     sem_wait(&x);
+//     readercount++;
 
-    sleep(5);
+//     if(readercount == 1) {
+//         sem_wait(&y);
+//     }
 
-    sem_wait(&x);
-    readercount--;
+//     sem_post(&x);
 
-    if (readercount == 0) {
-        sem_post(&y);
-    }
+//     std::cout << readercount << " is inside\n";
 
-    sem_post(&x);
+//     sleep(5);
 
-    std::cout << "reader leaved\n"; 
+//     sem_wait(&x);
+//     readercount--;
 
-}
+//     if (readercount == 0) {
+//         sem_post(&y);
+//     }
 
-void *writer(void* param) {
+//     sem_post(&x);
 
-    std::cout << "Writer is trying to enter\n";
+//     std::cout << "reader leaved\n"; 
 
-    sem_wait(&y);
+//     return NULL;
+// }
 
-    std::cout << "Writer entered\n";
+// void *writer(void* param) {
 
-    sem_post(&y);
+//     std::cout << "Writer is trying to enter\n";
+
+//     sem_wait(&y);
+
+//     std::cout << "Writer entered\n";
+
+//     sem_post(&y);
     
-    std::cout << "Writer is leaving\n";
+//     std::cout << "Writer is leaving\n";
 
-    pthread_exit(NULL);
-}
+//     pthread_exit(NULL);
+// }
 
 
 int main(){
 
-    int server_socket, new_socket;
-    sockaddr_in server_address, client_address;
-    sockaddr_storage serverStorage;
+    int server_fd = 0, conn_fd = 0;
+    sockaddr_in server_address;
+    
+    time_t ticks;
+    char message[1024];
 
-    socklen_t address_size;
-    sem_init(&x, 0, 1);
-    sem_init(&y, 0, 1);
+    //socklen_t address_size;
+    //sem_init(&x, 0, 1);
+    //sem_init(&y, 0, 1);
 
-    server_socket = socket(AF_INET, SOCK_STREAM, 0);
+    server_fd = socket(AF_INET, SOCK_STREAM, 0);
 
     server_address.sin_family = AF_INET;
-    server_address.sin_addr.s_addr = INADDR_ANY;
+    server_address.sin_addr.s_addr = htonl(INADDR_ANY);
     server_address.sin_port = htons(5454);
 
-    bind(server_socket, (sockaddr*)&server_address, sizeof(server_address));
+    bind(server_fd, (sockaddr*)&server_address, sizeof(server_address));
 
-    listen(server_socket, 50);
+    listen(server_fd, 50);
 
-    pthread_t thread_id[60];
-    int i = 0;
+    //pthread_t thread_id[60];
+
+    //int i = 0;
 
     while(true) {
-        address_size = sizeof(serverStorage);
 
-        new_socket = accept(server_socket, (sockaddr*)&serverStorage, &address_size);
+        conn_fd = accept(server_fd, (sockaddr*)NULL, NULL);
 
-        int choice = 0;
-        recv(new_socket, &choice, sizeof(choice), 0);
+        ticks = time(NULL);
 
-        if(choice == 1) {
-            if(pthread_create(&readerthreads[i++], NULL, reader, &new_socket) != 0) {
-                std::cout << "failed to create thread\n";
-            }
-        }
+        snprintf(message, sizeof(message), "%.24s\r\n", ctime(&ticks));
+        write(conn_fd, message, strlen(message));
 
-        if (choice == 2) {
-            if(pthread_create(&writerthreads[i++], NULL, writer, &new_socket) != 0) {
-                std::cout << "failed to create thread\n";
-            }
-        }
-
-        if(i >= 50) {
-
-            i = 0;
-
-            while(i < 50) {
-                pthread_join(writerthreads[i++], NULL);
-                pthread_join(readerthreads[i++], NULL);
-            }
-
-            i = 0;
-        }
+        close(conn_fd);
+        sleep(1);
     }
 
     return 0;
