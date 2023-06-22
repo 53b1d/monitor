@@ -17,7 +17,6 @@ Acțiuni remote
 *copiere fișiere: scp
 *instalare aplicații/servicii: Ansible?
 
-
 var/syslog
 socket
 etc/shadow
