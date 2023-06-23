@@ -12,7 +12,12 @@
 sem_t x, y;
 int readercount = 0;
 
-void *reader(void* param) {
+
+typedef struct writer_parameters {
+    int connection_id;
+} writer_parameters;
+
+void *reader(void* parameters) {
     sem_wait(&x);
     readercount++;
 
@@ -24,7 +29,8 @@ void *reader(void* param) {
 
     std::cout << readercount << " is inside\n";
 
-    sleep(5);
+    
+    //read();
 
     sem_wait(&x);
     readercount--;
@@ -40,14 +46,18 @@ void *reader(void* param) {
     return NULL;
 }
 
-void *writer(void* param) {
+void *writer(void *parameters) {
 
+    writer_parameters w1;
+    w1.connection_id = ((writer_parameters*)parameters)->connection_id;
     std::cout << "Writer is trying to enter\n";
 
     sem_wait(&y);
 
     std::cout << "Writer entered\n";
 
+    char message[] = "hello from server";
+    send(w1.connection_id, message, sizeof(message), 0);
     sem_post(&y);
     
     std::cout << "Writer is leaving\n";
@@ -76,11 +86,16 @@ int main(){
     server_address.sin_addr.s_addr = htonl(INADDR_ANY);
     server_address.sin_port = htons(5454);
 
+
     bind(server_fd, (sockaddr*)&server_address, sizeof(server_address));
+
+    socklen_t server_address_length = sizeof(server_address);
+
+    getsockname(server_fd, (struct sockaddr*)&server_address, &server_address_length);
 
     listen(server_fd, 50);
 
-    std::cout << "Listening on " << server_address.sin_addr.s_addr << " " << server_address.sin_port << "\n";
+    std::cout << "Listening on " << inet_ntoa(server_address.sin_addr) << " " << htons(server_address.sin_port) << "\n";
 
     int connection_id = 0;
 
@@ -88,18 +103,22 @@ int main(){
 
         connection_fd = accept(server_fd, (sockaddr*)&server_storage, &server_size);
 
-        int choice = 0;
+        char choice[1024];
         recv(connection_fd, &choice, sizeof(choice), 0);
+        std::cout << choice << "\n";
+        writer_parameters w1;
+        w1.connection_id = connection_fd;
+        pthread_create(&read_threads[connection_id++], NULL, writer, (void*)&w1);
 
-        if(choice == 1) {
-            std::cout << "Read request from " << connection_fd << "\n";
-            pthread_create(&read_threads[connection_id++], NULL, reader, &connection_fd);
-        }
+        // if(choice == 1) {
+        //     std::cout << "Read request from " << connection_fd << "\n";
+        //     pthread_create(&read_threads[connection_id++], NULL, reader, &connection_fd);
+        // }
 
-        if(choice == 2) {
-            std::cout << "Write request from " << connection_fd << "\n";
-            pthread_create(&read_threads[connection_id++], NULL, writer, &connection_fd);
-        }
+        // if(choice == 2) {
+        //     std::cout << "Write request from " << connection_fd << "\n";
+        //     pthread_create(&read_threads[connection_id++], NULL, writer, &connection_fd);
+        // }
 
         if(connection_id == 3) {
             connection_id = 0;
