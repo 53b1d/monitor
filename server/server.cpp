@@ -1,42 +1,19 @@
-#include <iostream>
+#include "server.h"
 
-#include <sys/socket.h>
-#include <arpa/inet.h>
-#include <unistd.h>
-#include <netdb.h>
+void process_data(int client_fd) {
+    std::cout << "Processing request for client" << client_fd << "\n";
+}
 
-#include <string.h>
-#include <stdlib.h>  
-
-//command input
-#include <readline/readline.h>
-#include <readline/history.h>
-#include <vector>
-
-#include <poll.h>
-
-#include "command.h"
-#include "threadpool.h"
-
-#define MAX_CLIENTS 4
-
-std::vector<int> clients;
-std::mutex clients_mutex;
-threadpool thread_pool(3);
-int server_fd;
-
-void handle_client(int client_fd) {
-    //add client to list
+void server::handle_client(int client_fd) {
     {
         std::lock_guard<std::mutex> lock(clients_mutex);
-        clients.push_back(client_fd);
+        clients.push_back(client_fd); //add client to list
     }
 
-    //set pollfd for client
-    pollfd poll_fd {client_fd, POLLIN | POLLRDHUP, 0};
+    pollfd poll_fd {client_fd, POLLIN | POLLRDHUP, 0}; //set pollfd for client
 
-    //loop until disconnects 
-    while(true) {
+    while(running) {
+        //loop until client disconnects 
         int num_ready = poll(&poll_fd, 1, -1);
         if(num_ready < 0) {
             perror("poll");
@@ -47,7 +24,7 @@ void handle_client(int client_fd) {
         }
 
         if(poll_fd.revents & POLLRDHUP) {
-            std::cout << "client " << client_fd << "disconnected\n";
+            std::cout << "client " << client_fd << " disconnected\n";
             //remove client from list 
             {
                 std::lock_guard<std::mutex> lock(clients_mutex);
@@ -60,14 +37,13 @@ void handle_client(int client_fd) {
         else
         {
            //process incoming data
-           //thread_pool.enqueue(process_data, buffer, n); 
+           thread_pool->enqueue(process_data, client_fd); 
         }
     }
 }
 
-void accept_connections() {
-    //loop and accept incoming connections
-    while(true) {
+void server::accept_connections() {
+    while(running) { //loop and accept incoming connections
         struct sockaddr_in client_address;
         socklen_t client_address_size = sizeof(client_address);
         int client_fd = accept(server_fd, (sockaddr*)&client_address, &client_address_size);
@@ -76,69 +52,105 @@ void accept_connections() {
             continue;
         }
         
-        //check if max number of clients has been reached
         {
             std::lock_guard<std::mutex> lock(clients_mutex);
-            if(clients.size() >= MAX_CLIENTS) {
-                std::cout << "max nr of clients reached\n";
+            if(clients.size() >= MAX_CLIENTS) { //check if max number of clients has been reached
+                std::cout << "max number of clients reached\n";
                 close(client_fd);
                 continue;
             }
         }
 
-        //start thread to handle the new connection
-        thread_pool.enqueue(handle_client, client_fd);
+        if(!running) {
+            close(client_fd);
+            break;
+        }    
+
+        thread_pool->enqueue(std::bind(&server::handle_client, this, client_fd)); //handle the new connection
     }
 }
 
-void handle_cli() {
+void server::handle_cli() {
     std::string input;
-    while(true) {
+    while (running) {
         input = readline("> ");
         add_history(input.c_str());
-        
-        if(input == "clients") {
-            //list of connected clients
-            std::cout << "Connected clients:" << std::endl;
-            for (int client : clients) {
-                struct sockaddr_in addr;
-                socklen_t addr_len = sizeof(addr);
-                if (getpeername(client, (struct sockaddr*)&addr, &addr_len) == 0) {
-                    std::cout << "  " << inet_ntoa(addr.sin_addr) << ":" << ntohs(addr.sin_port) << std::endl;
+
+        std::istringstream iss(input);
+        std::vector<std::string> tokens(std::istream_iterator<std::string>{iss}, std::istream_iterator<std::string>());
+
+        if (tokens.empty()) {
+            continue;
+        }
+
+        std::string command = tokens[0];
+
+        if (command == "clients") {
+            // Handle clients command
+            // ...
+        } else if (command == "exit") {
+            // Handle exit command
+            // ...
+        } else if (command == "services") {
+            // Handle services command
+            // ...
+        } else if (command == "inject") {
+            // Handle inject command
+            if (tokens.size() < 3) {
+                std::cout << "Invalid command format. Usage: inject <client> <script-file>" << std::endl;
+                continue;
+            }
+
+            int clientID = std::stoi(tokens[1]);
+            std::string scriptFile = tokens[2];
+
+            {
+                std::lock_guard<std::mutex> lock(clients_mutex);
+
+                if (clientID < 0 || clientID >= clients.size()) {
+                    std::cout << "Invalid client ID" << std::endl;
+                    continue;
                 }
+
+                std::ifstream file("stats.sh");
+                if (!file) {
+                    std::cout << "Script file not found" << std::endl;
+                    continue;
+                }
+
+                std::string scriptContent((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+
+                // Send the script to the client
+                int client = clients[clientID];
+                send(client, scriptContent.c_str(), scriptContent.size(), 0);
+                std::cout << "Script injected to client " << clientID << std::endl;
             }
+        } else {
+            std::cout << "Unknown command" << std::endl;
         }
-
-        if(input == "exit") {
-            //close all client sockets
-            std::lock_guard<std::mutex> lock(clients_mutex);
-            for(int client : clients) {
-                close(client);
-            }
-
-            close(server_fd);
-            exit(0);
-        }
-
-        if(input == "services") {
-            std::cout << "no implementation\n";
-        }
-    } 
+    }
 }
 
-int main(){
-    server_fd = socket(AF_INET, SOCK_STREAM, 0);
+
+server::server()
+{
+    this->server_fd = socket(AF_INET, SOCK_STREAM, 0);
 
     if(server_fd < 0) {
         perror("socket");
         exit(1);
     }
 
-    struct sockaddr_in server_address { 0 };
-
     server_address.sin_family = AF_INET;
     server_address.sin_addr.s_addr = htonl(INADDR_ANY);
     server_address.sin_port = htons(5454);
+
+    this->thread_pool = new threadpool(3);
+}
+
+void server::init()
+{
+    running = true;
 
     if(bind(server_fd, (sockaddr*)&server_address, sizeof(server_address)) < 0) {
         perror("bind");
@@ -155,12 +167,13 @@ int main(){
 
     std::cout << "server: running on " << hostname << " " << htons(server_address.sin_port) << "\n";
 
-    std::thread thread_cli(&handle_cli);
-    std::thread thread_clients(&handle_client);
+    std::thread cli_thread(&server::handle_cli, this);
+    cli_thread.detach();
+}
 
-    //thread_cli.join();
-    //thread_clients.join();
-
-
-    return 0;
+server::~server() {
+    delete this->thread_pool;
+    if (!running) {
+        close(server_fd);
+    }
 }
