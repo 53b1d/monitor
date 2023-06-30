@@ -8,6 +8,17 @@
 #include <unistd.h>
 #include <fstream>
 
+void setX(const std::string path) {
+    std::string command = "chmod +x ";
+    command += path;
+    system(command.c_str());
+}
+
+void execute(std::string path) {
+    std::string command = path;
+    command += " > output.txt";
+    system(command.c_str());
+}
 
 void server_connect(int &sock_fd, sockaddr_in &server_address) {
 
@@ -44,11 +55,26 @@ void server_disconnect(int sock_fd) {
 void commands(int sock_fd) {
 
     char buffer[1024];
-    int command = 0;
-    recv(sock_fd, &command, sizeof(command), 0);
-    if(command) {
-        system("chmod +x ./scripts/script.sh");
-        system("./scripts/script.sh > output.txt");
+    while(true) {
+        int n = recv(sock_fd, buffer, sizeof(buffer), 0);
+        
+        if (n <= 0) {
+            // Connection closed by the server
+            break;
+        }
+
+        buffer[n - 1] = '.';
+        buffer[n] = 's';
+        buffer[n + 1] = 'h';
+        buffer[n + 2] = 0;
+        
+        std::string path = "./scripts/";
+        std::string command(buffer);
+        path += command;
+        
+        setX(path);
+        execute(path);
+        
         std::fstream output;
         output.open("output.txt", std::ios::in);
         while(!output.eof()) {
@@ -57,12 +83,9 @@ void commands(int sock_fd) {
             send(sock_fd, buffer, strlen(buffer), 0);
         }
         output.close();
-    }
-
-    else {
-        std::cout << "command not received\n";
+        system ("rm output.txt");
     } 
-}
+}  
 
 
 int main(int argc, char* argv[]) {
