@@ -2,7 +2,7 @@ Proiectul #6 Utilitar pentru monitorizarea la distanță a mai multor sisteme Li
 
 Monitorizare:
 * consum de resurse(RAM; CPU; I/O; temperatură): top, htop sau sar 
-colectare informații în mod regulat și stocare într-o bază de date
+* colectare informații în mod regulat și stocare într-un fisier
 
 * Utilizatori
 * timpi de autentificare:  fisierele /var/log/auth.log
@@ -10,12 +10,12 @@ colectare informații în mod regulat și stocare într-o bază de date
 * servicii active: service
 
 * dispozitive hardware: lspci, lsusb sau dmidecode 
-- starea hardware-ului și pentru a detecta eventuale probleme sau erori.
+* starea hardware-ului și pentru a detecta eventuale probleme sau erori.
 
 Acțiuni remote
-*oprire/pornire servicii/procese: systemctl + ZOOM (informatii suplimentare procese)
-*copiere fișiere: scp
-*instalare aplicații/servicii: Ansible?
+* oprire/pornire servicii/procese: systemctl + ZOOM (informatii suplimentare procese)
+* copiere fișiere: scp
+* instalare aplicații/servicii: Ansible?
 
 var/syslog
 socket
